@@ -1,5 +1,6 @@
 # listcontents
-Bash script to print out file contents from a directory. Useful when you have a codebase for prompting LLMs that support a large context window.
+
+Python script to print out file contents from a directory. Useful when you have a codebase for prompting LLMs that support a large context window.
 
 ### Info
 
