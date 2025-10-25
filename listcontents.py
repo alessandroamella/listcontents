@@ -176,6 +176,47 @@ def is_excluded(path: str, exclude_patterns: Optional[List[str]]) -> bool:
     return False
 
 
+def is_included(path: str, include_patterns: Optional[List[str]]) -> bool:
+    """
+    Check if a path should be included based on include patterns.
+
+    Args:
+        path (str): Path to check
+        include_patterns (List[str]): List of patterns to include
+
+    Returns:
+        bool: True if path should be included, False otherwise
+    """
+    if not include_patterns:
+        return False
+
+    # Normalize path to use forward slashes for consistent matching
+    norm_path = path.replace(os.sep, "/")
+
+    for pattern in include_patterns:
+        # Normalize pattern too
+        norm_pattern = pattern.replace(os.sep, "/")
+
+        # Check if pattern is a directory (ends with /)
+        if norm_pattern.endswith("/"):
+            # Directory pattern
+            if norm_path.startswith(norm_pattern.rstrip("/")):
+                return True
+        else:
+            # File pattern - check exact match, path contains pattern, or filename matches
+            filename = os.path.basename(norm_path)
+            if (
+                norm_path == norm_pattern
+                or ("/" + norm_pattern) in norm_path
+                or filename == norm_pattern
+                or fnmatch.fnmatch(filename, norm_pattern)
+                or fnmatch.fnmatch(norm_path, norm_pattern)
+            ):
+                return True
+
+    return False
+
+
 def find_all_gitignore_files(directory: str) -> List[str]:
     """
     Find all .gitignore files within a git repository (from its root) or,
@@ -256,6 +297,7 @@ def should_process_file(
     file_path: str,
     extensions: Optional[List[str]],
     exclude_patterns: Optional[List[str]],
+    include_patterns: Optional[List[str]],
     gitignore_matchers: Optional[List] = None,
     allow_ignored: bool = False,
     parse_pdf: bool = False,
@@ -268,6 +310,7 @@ def should_process_file(
         file_path (str): Absolute path to the file.
         extensions (List[str]): List of allowed extensions (None means all).
         exclude_patterns (List[str]): List of patterns to exclude.
+        include_patterns (List[str]): List of patterns to include.
         gitignore_matchers (List): List of matcher functions from gitignore_parser.
         allow_ignored (bool): Whether to process files ignored by .gitignore.
         parse_pdf (bool): Whether to parse PDF files.
@@ -277,9 +320,15 @@ def should_process_file(
         bool: True if the file should be processed, False otherwise.
     """
     try:
-        # Check if file matches any exclude patterns
-        if is_excluded(file_path, exclude_patterns):
-            return False
+        # Check for inclusion/exclusion based on provided patterns
+        if include_patterns:
+            # Include mode: file must match one of the include patterns
+            if not is_included(file_path, include_patterns):
+                return False
+        else:
+            # Exclude mode: file must not match any of the exclude patterns
+            if is_excluded(file_path, exclude_patterns):
+                return False
 
         # Check gitignore patterns unless allow_ignored is True
         if not allow_ignored and gitignore_matchers:
@@ -287,7 +336,6 @@ def should_process_file(
             abs_file_path = os.path.abspath(file_path)
             # Unpack the tuple here
             for matcher_base_dir, matcher in gitignore_matchers:
-                # --- FIX ---
                 # Only apply a matcher if the file is within its directory scope.
                 # os.path.commonpath is a robust way to check this.
                 # Ensure the base directory is absolute for comparison
@@ -386,6 +434,7 @@ def process_file(file_path: str, base_dir: str, parse_pdf: bool = False) -> None
 def safe_walk(
     top: str,
     exclude_patterns: Optional[List[str]],
+    include_patterns: Optional[List[str]],
     gitignore_matchers: Optional[List],
     allow_ignored: bool,
     **kwargs,
@@ -402,13 +451,32 @@ def safe_walk(
             dirs[:] = []
             for d in original_dirs:
                 dir_path = os.path.join(abs_root, d)
+
+                # Handle include/exclude patterns first
+                if include_patterns:
+                    # Include mode: keep directory if it could contain an included path
+                    keep_dir = False
+                    norm_dir_path = dir_path.replace(os.sep, "/")
+                    for pattern in include_patterns:
+                        norm_pattern = pattern.replace(os.sep, "/")
+                        # Keep if dir is a parent of pattern, or pattern is a parent of dir
+                        if norm_pattern.startswith(
+                            norm_dir_path
+                        ) or norm_dir_path.startswith(norm_pattern):
+                            keep_dir = True
+                            break
+                    if not keep_dir:
+                        continue  # Prune this directory
+                else:
+                    # Exclude mode (original logic)
+                    if is_excluded(dir_path, exclude_patterns):
+                        continue
+
+                # Then, handle gitignore logic for remaining directories
                 is_dir_ignored = False
-                if is_excluded(dir_path, exclude_patterns):
-                    is_dir_ignored = True
-                elif not allow_ignored and gitignore_matchers:
+                if not allow_ignored and gitignore_matchers:
                     # Unpack the tuple here
                     for matcher_base_dir, matcher in gitignore_matchers:
-                        # --- FIX ---
                         # Only apply a matcher if the directory is within its scope.
                         abs_matcher_base_dir = os.path.abspath(matcher_base_dir)
                         if (
@@ -444,18 +512,26 @@ def main():
     parser.add_argument(
         "--max-depth", "-m", type=int, help="Maximum directory depth to traverse"
     )
-    parser.add_argument(
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         "--exclude",
         "-e",
         nargs="+",
-        default=["node_modules/", "yarn.lock", "package-lock.json", "pnpm-lock.yaml"],
-        help="Patterns to exclude (e.g., node_modules/ vendor/). Default excludes common Node.js files.",
+        help="Patterns to exclude (e.g., node_modules/ vendor/). Cannot be used with --include.",
     )
+    group.add_argument(
+        "--include",
+        "-i",
+        nargs="+",
+        help="Patterns to include (e.g., src/*.py). Only specified files/dirs are processed. Cannot be used with --exclude.",
+    )
+
     parser.add_argument(
         "--include-all",
         "-a",
         action="store_true",
-        help="Include all files, even those excluded by default (node_modules/, lock files, etc.)",
+        help="Include all files, disabling default excludes (like node_modules/). No effect if --include is used.",
     )
     parser.add_argument("--skip-binary", action="store_true", help="Skip binary files")
     parser.add_argument(
@@ -466,7 +542,6 @@ def main():
     )
     parser.add_argument(
         "--allow-ignored",
-        "-i",
         action="store_true",
         help="Process files that are ignored by .gitignore",
     )
@@ -489,9 +564,19 @@ def main():
         )
         return 1
 
-    # Handle --include-all flag
-    if args.include_all:
+    # Handle default excludes.
+    # The mutually exclusive group ensures only one of args.include or args.exclude is not None.
+    if args.include_all and not args.include:
+        # --include-all is used to override default excludes, only effective in exclude mode.
         args.exclude = []
+    elif not args.include and not args.exclude:
+        # Neither --include nor --exclude was provided by user, so apply defaults.
+        args.exclude = [
+            "node_modules/",
+            "yarn.lock",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+        ]
 
     # Convert extensions to lowercase and ensure they start with dot
     extensions = None
@@ -529,6 +614,7 @@ def main():
         for root, dirs, files in safe_walk(
             args.dir,
             exclude_patterns=args.exclude,
+            include_patterns=args.include,
             gitignore_matchers=gitignore_matchers,
             allow_ignored=args.allow_ignored,
             followlinks=args.follow_links,
@@ -556,12 +642,11 @@ def main():
 
                         file_path = os.path.join(root, file)
 
-                        if not is_excluded(
-                            file_path, args.exclude
-                        ) and should_process_file(
+                        if should_process_file(
                             file_path,
                             extensions,
                             args.exclude,
+                            args.include,
                             gitignore_matchers,
                             args.allow_ignored,
                             args.parse_pdf,
