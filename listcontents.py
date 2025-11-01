@@ -176,41 +176,43 @@ def is_excluded(path: str, exclude_patterns: Optional[List[str]]) -> bool:
     return False
 
 
-def is_included(path: str, include_patterns: Optional[List[str]]) -> bool:
+def is_included(
+    path: str, include_patterns: Optional[List[str]], base_dir: str
+) -> bool:
     """
     Check if a path should be included based on include patterns.
 
     Args:
-        path (str): Path to check
+        path (str): Absolute path to check
         include_patterns (List[str]): List of patterns to include
+        base_dir (str): The starting directory for the script, to create relative paths
 
     Returns:
         bool: True if path should be included, False otherwise
     """
     if not include_patterns:
-        return False
+        return False  # If there are no include patterns, nothing is included.
 
-    # Normalize path to use forward slashes for consistent matching
-    norm_path = path.replace(os.sep, "/")
+    try:
+        # Make the path relative to the starting directory for comparison
+        rel_path = os.path.relpath(path, base_dir).replace(os.sep, "/")
+    except ValueError:
+        # This can happen if path and base_dir are on different drives (Windows)
+        # Fall back to the full path, which may not work as expected but avoids a crash.
+        rel_path = path.replace(os.sep, "/")
 
     for pattern in include_patterns:
-        # Normalize pattern too
         norm_pattern = pattern.replace(os.sep, "/")
 
-        # Check if pattern is a directory (ends with /)
+        # If pattern is a directory (e.g., "auth/"), check if the relative path starts with it
         if norm_pattern.endswith("/"):
-            # Directory pattern
-            if norm_path.startswith(norm_pattern.rstrip("/")):
+            if rel_path.startswith(norm_pattern):
                 return True
+        # If pattern is a file/wildcard, use fnmatch for more flexible matching
         else:
-            # File pattern - check exact match, path contains pattern, or filename matches
-            filename = os.path.basename(norm_path)
-            if (
-                norm_path == norm_pattern
-                or ("/" + norm_pattern) in norm_path
-                or filename == norm_pattern
-                or fnmatch.fnmatch(filename, norm_pattern)
-                or fnmatch.fnmatch(norm_path, norm_pattern)
+            # Check against the full relative path or just the filename part
+            if fnmatch.fnmatch(rel_path, norm_pattern) or fnmatch.fnmatch(
+                os.path.basename(rel_path), norm_pattern
             ):
                 return True
 
@@ -295,6 +297,7 @@ def get_gitignore_matcher(gitignore_path: str):
 
 def should_process_file(
     file_path: str,
+    base_dir: str,
     extensions: Optional[List[str]],
     exclude_patterns: Optional[List[str]],
     include_patterns: Optional[List[str]],
@@ -308,6 +311,7 @@ def should_process_file(
 
     Args:
         file_path (str): Absolute path to the file.
+        base_dir (str): The starting directory for the script, to create relative paths.
         extensions (List[str]): List of allowed extensions (None means all).
         exclude_patterns (List[str]): List of patterns to exclude.
         include_patterns (List[str]): List of patterns to include.
@@ -323,7 +327,7 @@ def should_process_file(
         # Check for inclusion/exclusion based on provided patterns
         if include_patterns:
             # Include mode: file must match one of the include patterns
-            if not is_included(file_path, include_patterns):
+            if not is_included(file_path, include_patterns, base_dir):
                 return False
         else:
             # Exclude mode: file must not match any of the exclude patterns
@@ -454,15 +458,19 @@ def safe_walk(
 
                 # Handle include/exclude patterns first
                 if include_patterns:
-                    # Include mode: keep directory if it could contain an included path
+                    # Include mode: keep directory if it or a parent path matches an include pattern
                     keep_dir = False
-                    norm_dir_path = dir_path.replace(os.sep, "/")
+                    # Get relative path of the directory being considered
+                    rel_dir_path = os.path.relpath(dir_path, top).replace(os.sep, "/")
+
                     for pattern in include_patterns:
-                        norm_pattern = pattern.replace(os.sep, "/")
-                        # Keep if dir is a parent of pattern, or pattern is a parent of dir
-                        if norm_pattern.startswith(
-                            norm_dir_path
-                        ) or norm_dir_path.startswith(norm_pattern):
+                        norm_pattern = pattern.replace(os.sep, "/").rstrip("/")
+                        # Keep the directory if its path is a subpath of the pattern
+                        # or if the pattern is a subpath of its path.
+                        # This ensures we traverse into parent dirs of an included target.
+                        if rel_dir_path.startswith(
+                            norm_pattern
+                        ) or norm_pattern.startswith(rel_dir_path):
                             keep_dir = True
                             break
                     if not keep_dir:
@@ -644,6 +652,7 @@ def main():
 
                         if should_process_file(
                             file_path,
+                            args.dir,
                             extensions,
                             args.exclude,
                             args.include,
