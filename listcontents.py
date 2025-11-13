@@ -204,16 +204,21 @@ def is_included(
     for pattern in include_patterns:
         norm_pattern = pattern.replace(os.sep, "/")
 
-        # If pattern is a directory (e.g., "auth/"), check if the relative path starts with it
+        # Case 1: Pattern is explicitly a directory (e.g., "auth/")
         if norm_pattern.endswith("/"):
             if rel_path.startswith(norm_pattern):
                 return True
-        # If pattern is a file/wildcard, use fnmatch for more flexible matching
+        # Case 2: Pattern is a file/wildcard OR a directory name without a slash
         else:
-            # Check against the full relative path or just the filename part
+            # Check for a file-level match (e.g., "*.py", "main.py")
             if fnmatch.fnmatch(rel_path, norm_pattern) or fnmatch.fnmatch(
                 os.path.basename(rel_path), norm_pattern
             ):
+                return True
+
+            # Check for a directory-level match (e.g., "dir1")
+            # A path matches if it is the directory itself or is inside that directory.
+            if rel_path == norm_pattern or rel_path.startswith(norm_pattern + "/"):
                 return True
 
     return False
