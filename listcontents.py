@@ -579,17 +579,23 @@ def main():
 
     # Handle default excludes.
     # The mutually exclusive group ensures only one of args.include or args.exclude is not None.
+    default_excludes = [
+        "node_modules/",
+        "yarn.lock",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+    ]
+
     if args.include_all and not args.include:
-        # --include-all is used to override default excludes, only effective in exclude mode.
+        # --include-all is used to override default excludes
         args.exclude = []
-    elif not args.include and not args.exclude:
-        # Neither --include nor --exclude was provided by user, so apply defaults.
-        args.exclude = [
-            "node_modules/",
-            "yarn.lock",
-            "package-lock.json",
-            "pnpm-lock.yaml",
-        ]
+    elif not args.include:
+        # If we are in exclude mode (default or explicit)
+        if args.exclude is None:
+            args.exclude = []
+
+        # ALWAYS add defaults to the exclude list, even if user provided their own
+        args.exclude.extend(default_excludes)
 
     # Convert extensions to lowercase and ensure they start with dot
     extensions = None
