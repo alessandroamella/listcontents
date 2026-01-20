@@ -375,14 +375,11 @@ def should_process_file(
         return False
 
 
-def process_file(file_path: str, base_dir: str, parse_pdf: bool = False) -> None:
+def process_file(
+    file_path: str, base_dir: str, parse_pdf: bool = False, use_markdown: bool = False
+) -> None:
     """
     Process a single file and print its contents.
-
-    Args:
-        file_path (str): Path to the file to process
-        base_dir (str): Base directory for creating relative paths
-        parse_pdf (bool): Whether to parse PDF files using pdftotext
     """
     try:
         # Check if file exists and is accessible
@@ -402,15 +399,28 @@ def process_file(file_path: str, base_dir: str, parse_pdf: bool = False) -> None
         try:
             rel_path = os.path.relpath(file_path, base_dir)
         except ValueError:
-            # Handle case where file_path and base_dir are on different drives
             rel_path = file_path
 
         print(f"// {rel_path}")
 
+        # Helper to start markdown block
+        def start_block():
+            if use_markdown:
+                # Get extension without dot (e.g., 'py'), default to 'txt'
+                ext = os.path.splitext(file_path)[1].lstrip(".").lower() or "txt"
+                print(f"```{ext}")
+
+        # Helper to end markdown block
+        def end_block():
+            if use_markdown:
+                print("```")
+
         # Handle PDF files if parse_pdf is enabled
         if parse_pdf and is_pdf_file(file_path):
             pdf_text = extract_pdf_text(file_path)
+            start_block()
             print(pdf_text)
+            end_block()
             print()
             return
 
@@ -423,7 +433,10 @@ def process_file(file_path: str, base_dir: str, parse_pdf: bool = False) -> None
         # Print file contents
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                print(f.read())
+                content = f.read()
+                start_block()
+                print(content)
+                end_block()
             print()
         except UnicodeDecodeError:
             print("<File contains invalid Unicode characters>")
@@ -524,6 +537,13 @@ def main():
     )
     parser.add_argument(
         "--max-depth", "-m", type=int, help="Maximum directory depth to traverse"
+    )
+    parser.add_argument(
+        "--markdown",
+        "-md",
+        action="store_true",
+        default=True,
+        help="Wrap file content in markdown code blocks",
     )
 
     group = parser.add_mutually_exclusive_group()
@@ -674,7 +694,9 @@ def main():
                         ):
                             if args.skip_binary and is_binary_file(file_path):
                                 continue
-                            process_file(file_path, args.dir, args.parse_pdf)
+                            process_file(
+                                file_path, args.dir, args.parse_pdf, args.markdown
+                            )
                     except Exception as e:
                         logger.warning(f"Error processing file {file}: {str(e)}")
                         continue
