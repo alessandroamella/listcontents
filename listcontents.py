@@ -542,7 +542,7 @@ def main():
         "--markdown",
         "-md",
         action="store_true",
-        default=True,
+        default=False,
         help="Wrap file content in markdown code blocks",
     )
 
