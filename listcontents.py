@@ -417,7 +417,7 @@ def process_file(
 
         # Handle PDF files if parse_pdf is enabled
         if parse_pdf and is_pdf_file(file_path):
-            pdf_text = extract_pdf_text(file_path)
+            pdf_text = extract_pdf_text(file_path).strip()
             start_block()
             print(pdf_text)
             end_block()
@@ -433,7 +433,7 @@ def process_file(
         # Print file contents
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+                content = f.read().strip()
                 start_block()
                 print(content)
                 end_block()
