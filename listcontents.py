@@ -310,6 +310,7 @@ def should_process_file(
     allow_ignored: bool = False,
     parse_pdf: bool = False,
     git_root: Optional[str] = None,
+    exclude_extensions: Optional[List[str]] = None,
 ) -> bool:
     """
     Determine if a file should be processed based on its extension and exclusion rules.
@@ -358,6 +359,9 @@ def should_process_file(
 
         # Check file extension
         file_ext = os.path.splitext(file_path)[1].lower()
+
+        if exclude_extensions and file_ext in exclude_extensions:
+            return False
 
         # If parse_pdf is enabled and this is a PDF file, always process it
         if parse_pdf and file_ext == ".pdf":
@@ -536,6 +540,12 @@ def main():
         help="List of file extensions to include (e.g., .py .txt)",
     )
     parser.add_argument(
+        "--exclude-extensions",
+        "-X",
+        nargs="+",
+        help="List of file extensions to exclude (e.g., .py .txt)",
+    )
+    parser.add_argument(
         "--max-depth", "-m", type=int, help="Maximum directory depth to traverse"
     )
     parser.add_argument(
@@ -625,6 +635,14 @@ def main():
             for ext in args.extensions
         ]
 
+    # Convert exclude_extensions to use same format
+    exclude_extensions = None
+    if args.exclude_extensions:
+        exclude_extensions = [
+            ext.lower() if ext.startswith(".") else f".{ext.lower()}"
+            for ext in args.exclude_extensions
+        ]
+
     # Load .gitignore matchers if .gitignore exists and not allowing ignored files
     gitignore_matchers = []
     git_root = find_git_root(args.dir)
@@ -691,6 +709,7 @@ def main():
                             args.allow_ignored,
                             args.parse_pdf,
                             git_root,
+                            exclude_extensions,
                         ):
                             if args.skip_binary and is_binary_file(file_path):
                                 continue
