@@ -380,7 +380,11 @@ def should_process_file(
 
 
 def process_file(
-    file_path: str, base_dir: str, parse_pdf: bool = False, use_markdown: bool = False
+    file_path: str,
+    base_dir: str,
+    parse_pdf: bool = False,
+    use_markdown: bool = False,
+    summary_only: bool = False,
 ) -> None:
     """
     Process a single file and print its contents.
@@ -422,9 +426,13 @@ def process_file(
         # Handle PDF files if parse_pdf is enabled
         if parse_pdf and is_pdf_file(file_path):
             pdf_text = extract_pdf_text(file_path).strip()
-            start_block()
-            print(pdf_text)
-            end_block()
+            if summary_only:
+                line_count = len(pdf_text.splitlines())
+                print(f"<{line_count} lines long file>")
+            else:
+                start_block()
+                print(pdf_text)
+                end_block()
             print()
             return
 
@@ -437,10 +445,14 @@ def process_file(
         # Print file contents
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                start_block()
-                print(content)
-                end_block()
+                if summary_only:
+                    line_count = sum(1 for _ in f)
+                    print(f"<{line_count} lines long file>")
+                else:
+                    content = f.read().strip()
+                    start_block()
+                    print(content)
+                    end_block()
             print()
         except UnicodeDecodeError:
             print("<File contains invalid Unicode characters>")
@@ -568,6 +580,13 @@ def main():
         "-i",
         nargs="+",
         help="Patterns to include (e.g., src/*.py). Only specified files/dirs are processed. Cannot be used with --exclude.",
+    )
+
+    parser.add_argument(
+        "--no-content",
+        "-nc",
+        nargs="+",
+        help="Patterns for directories/files to print only filename and line count (e.g. logs/ data.json)",
     )
 
     parser.add_argument(
@@ -713,8 +732,17 @@ def main():
                         ):
                             if args.skip_binary and is_binary_file(file_path):
                                 continue
+
+                            summary_only = False
+                            if args.no_content:
+                                summary_only = is_excluded(file_path, args.no_content)
+
                             process_file(
-                                file_path, args.dir, args.parse_pdf, args.markdown
+                                file_path,
+                                args.dir,
+                                args.parse_pdf,
+                                args.markdown,
+                                summary_only=summary_only,
                             )
                     except Exception as e:
                         logger.warning(f"Error processing file {file}: {str(e)}")
