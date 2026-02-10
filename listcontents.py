@@ -428,7 +428,10 @@ def process_file(
             pdf_text = extract_pdf_text(file_path).strip()
             if summary_only:
                 line_count = len(pdf_text.splitlines())
-                print(f"<{line_count} lines long file>")
+                byte_count = len(pdf_text.encode("utf-8"))
+                line_word = "line" if line_count == 1 else "lines"
+                byte_word = "byte" if byte_count == 1 else "bytes"
+                print(f"<{line_count} {line_word}, {byte_count} {byte_word}>")
             else:
                 start_block()
                 print(pdf_text)
@@ -444,10 +447,17 @@ def process_file(
 
         # Print file contents
         try:
+
             with open(file_path, "r", encoding="utf-8") as f:
                 if summary_only:
-                    line_count = sum(1 for _ in f)
-                    print(f"<{line_count} lines long file>")
+                    content = f.read()
+                    line_count = content.count("\n") + (
+                        1 if content and not content.endswith("\n") else 0
+                    )
+                    byte_count = len(content.encode("utf-8"))
+                    line_word = "line" if line_count == 1 else "lines"
+                    byte_word = "byte" if byte_count == 1 else "bytes"
+                    print(f"<{line_count} {line_word}, {byte_count} {byte_word}>")
                 else:
                     content = f.read().strip()
                     start_block()
