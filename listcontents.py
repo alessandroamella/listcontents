@@ -390,26 +390,29 @@ def process_file(
     Process a single file and print its contents.
     """
     try:
-        # Check if file exists and is accessible
-        if not os.path.exists(file_path):
-            print(f"// {file_path}")
-            print("<File not found>")
-            print()
-            return
-
-        if not os.access(file_path, os.R_OK):
-            print(f"// {file_path}")
-            print("<Permission denied>")
-            print()
-            return
-
         # Get relative path
         try:
             rel_path = os.path.relpath(file_path, base_dir)
         except ValueError:
             rel_path = file_path
 
-        print(f"// {rel_path}")
+        # Check if file exists and is accessible
+        if not os.path.exists(file_path):
+            header_prefix = "##" if use_markdown else "//"
+            print(f"{header_prefix} {rel_path}")
+            print("<File not found>")
+            print()
+            return
+
+        if not os.access(file_path, os.R_OK):
+            header_prefix = "##" if use_markdown else "//"
+            print(f"{header_prefix} {rel_path}")
+            print("<Permission denied>")
+            print()
+            return
+
+        header_prefix = "##" if use_markdown else "//"
+        print(f"{header_prefix} {rel_path}")
 
         # Helper to start markdown block
         def start_block():
@@ -474,7 +477,12 @@ def process_file(
             print(f"<Error reading file: {str(e)}>")
             print()
     except Exception as e:
-        print(f"// {file_path}")
+        try:
+            rel_path = os.path.relpath(file_path, base_dir)
+        except ValueError:
+            rel_path = file_path
+        header_prefix = "##" if use_markdown else "//"
+        print(f"{header_prefix} {rel_path}")
         print(f"<Error processing file: {str(e)}>")
         print()
 
@@ -643,6 +651,7 @@ def main():
         "yarn.lock",
         "package-lock.json",
         "pnpm-lock.yaml",
+        "bun.lock",
     ]
 
     if args.include_all and not args.include:
