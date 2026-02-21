@@ -398,21 +398,27 @@ def process_file(
 
         # Check if file exists and is accessible
         if not os.path.exists(file_path):
-            header_prefix = "##" if use_markdown else "//"
-            print(f"{header_prefix} {rel_path}")
+            if use_markdown:
+                print(f"`{rel_path}`")
+            else:
+                print(f"// {rel_path}")
             print("<File not found>")
             print()
             return
 
         if not os.access(file_path, os.R_OK):
-            header_prefix = "##" if use_markdown else "//"
-            print(f"{header_prefix} {rel_path}")
+            if use_markdown:
+                print(f"`{rel_path}`")
+            else:
+                print(f"// {rel_path}")
             print("<Permission denied>")
             print()
             return
 
-        header_prefix = "##" if use_markdown else "//"
-        print(f"{header_prefix} {rel_path}")
+        if use_markdown:
+            print(f"`{rel_path}`")
+        else:
+            print(f"// {rel_path}")
 
         # Helper to start markdown block
         def start_block():
@@ -481,8 +487,10 @@ def process_file(
             rel_path = os.path.relpath(file_path, base_dir)
         except ValueError:
             rel_path = file_path
-        header_prefix = "##" if use_markdown else "//"
-        print(f"{header_prefix} {rel_path}")
+        if use_markdown:
+            print(f"`{rel_path}`")
+        else:
+            print(f"// {rel_path}")
         print(f"<Error processing file: {str(e)}>")
         print()
 
