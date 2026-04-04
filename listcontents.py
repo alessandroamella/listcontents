@@ -723,8 +723,9 @@ def main():
             followlinks=args.follow_links,
         ):
             try:
-                # Skip hidden directories
-                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                # Skip hidden directories unless explicitly using --include
+                if not args.include:
+                    dirs[:] = [d for d in dirs if not d.startswith(".")]
 
                 # Check depth
                 if args.max_depth is not None:
@@ -740,7 +741,9 @@ def main():
                 # Process files
                 for file in sorted(files):
                     try:
-                        if file.startswith("."):  # Skip hidden files
+                        if not args.include and file.startswith(
+                            "."
+                        ):  # Skip hidden files
                             continue
 
                         file_path = os.path.join(root, file)
