@@ -12,6 +12,79 @@ from gitignore_parser import parse_gitignore
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
+# Mapping of file extensions to markdown language identifiers
+EXTENSION_LANGUAGE_MAP = {
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".jsx": "javascript",
+    ".tsx": "typescript",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".sass": "sass",
+    ".less": "less",
+    ".json": "json",
+    ".xml": "xml",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".md": "markdown",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".fish": "fish",
+    ".sql": "sql",
+    ".java": "java",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".cs": "csharp",
+    ".vb": "vb",
+    ".fs": "fsharp",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
+    ".pl": "perl",
+    ".lua": "lua",
+    ".r": "r",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".scala": "scala",
+    ".hs": "haskell",
+    ".ml": "ocaml",
+    ".elm": "elm",
+    ".dart": "dart",
+    ".ex": "elixir",
+    ".exs": "elixir",
+    ".clj": "clojure",
+    ".cljs": "clojure",
+    ".scm": "scheme",
+    ".rkt": "racket",
+    ".nim": "nim",
+    ".v": "v",
+    ".zig": "zig",
+    ".toml": "toml",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".conf": "ini",
+    ".properties": "properties",
+    ".env": "bash",
+    ".dockerfile": "dockerfile",
+    ".makefile": "makefile",
+    ".cmake": "cmake",
+    ".gradle": "groovy",
+    ".sbt": "scala",
+    ".tex": "latex",
+    ".bib": "bibtex",
+    ".ipynb": "json",
+    ".pdf": "text",
+}
+
 
 def find_git_root(start_path: str) -> Optional[str]:
     """
@@ -379,12 +452,36 @@ def should_process_file(
         return False
 
 
+def format_reference(rel_path: str, reference: str, use_markdown: bool) -> str:
+    """
+    Format the file path reference header according to the chosen style.
+
+    Args:
+        rel_path (str): The relative path to the file.
+        reference (str): Reference style ('default', 'markdown', 'md', or '@').
+        use_markdown (bool): Whether markdown output is enabled (used by 'default').
+
+    Returns:
+        str: The formatted reference header line.
+    """
+    if reference in ("markdown", "md"):
+        return f"`{rel_path}`"
+    elif reference == "@":
+        return f"@{rel_path}"
+    else:  # 'default' - mirror legacy behavior based on --markdown
+        if use_markdown:
+            return f"`{rel_path}`"
+        else:
+            return f"// {rel_path}"
+
+
 def process_file(
     file_path: str,
     base_dir: str,
     parse_pdf: bool = False,
     use_markdown: bool = False,
     summary_only: bool = False,
+    reference: str = "@",
 ) -> None:
     """
     Process a single file and print its contents.
@@ -398,34 +495,25 @@ def process_file(
 
         # Check if file exists and is accessible
         if not os.path.exists(file_path):
-            if use_markdown:
-                print(f"`{rel_path}`")
-            else:
-                print(f"// {rel_path}")
+            print(format_reference(rel_path, reference, use_markdown))
             print("<File not found>")
             print()
             return
 
         if not os.access(file_path, os.R_OK):
-            if use_markdown:
-                print(f"`{rel_path}`")
-            else:
-                print(f"// {rel_path}")
+            print(format_reference(rel_path, reference, use_markdown))
             print("<Permission denied>")
             print()
             return
 
-        if use_markdown:
-            print(f"`{rel_path}`")
-        else:
-            print(f"// {rel_path}")
+        print(format_reference(rel_path, reference, use_markdown))
 
         # Helper to start markdown block
         def start_block():
             if use_markdown:
-                # Get extension without dot (e.g., 'py'), default to 'txt'
-                ext = os.path.splitext(file_path)[1].lstrip(".").lower() or "txt"
-                print(f"```{ext}")
+                ext = os.path.splitext(file_path)[1].lower()
+                lang = EXTENSION_LANGUAGE_MAP.get(ext, ext.lstrip(".") or "txt")
+                print(f"```{lang}")
 
         # Helper to end markdown block
         def end_block():
@@ -487,10 +575,7 @@ def process_file(
             rel_path = os.path.relpath(file_path, base_dir)
         except ValueError:
             rel_path = file_path
-        if use_markdown:
-            print(f"`{rel_path}`")
-        else:
-            print(f"// {rel_path}")
+        print(format_reference(rel_path, reference, use_markdown))
         print(f"<Error processing file: {str(e)}>")
         print()
 
@@ -592,6 +677,19 @@ def main():
         action="store_true",
         default=False,
         help="Wrap file content in markdown code blocks",
+    )
+    parser.add_argument(
+        "--reference",
+        "-r",
+        choices=["default", "markdown", "md", "@"],
+        default="@",
+        help=(
+            "How to reference file paths in the output header: "
+            "'default' (// path, or `path` if --markdown is set), "
+            "'markdown'/'md' (`path`), "
+            "'@' (@path, useful so Claude Code reads the referenced files). "
+            "Default: @"
+        ),
     )
 
     group = parser.add_mutually_exclusive_group()
@@ -773,6 +871,7 @@ def main():
                                 args.parse_pdf,
                                 args.markdown,
                                 summary_only=summary_only,
+                                reference=args.reference,
                             )
                     except Exception as e:
                         logger.warning(f"Error processing file {file}: {str(e)}")
